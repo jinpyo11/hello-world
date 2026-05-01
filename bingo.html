@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>3x3 Bingo</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background: #1a1a2e;
+      color: #eee;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      gap: 24px;
+    }
+
+    h1 {
+      font-size: 2.5rem;
+      letter-spacing: 0.3em;
+      color: #f0c040;
+      text-shadow: 0 0 20px rgba(240,192,64,0.5);
+    }
+
+    #status {
+      font-size: 1.2rem;
+      min-height: 1.6em;
+      color: #a0d8ef;
+    }
+
+    #status.win {
+      color: #f0c040;
+      font-size: 1.6rem;
+      font-weight: bold;
+      animation: pulse 0.8s infinite alternate;
+    }
+
+    @keyframes pulse {
+      from { text-shadow: 0 0 8px rgba(240,192,64,0.4); }
+      to   { text-shadow: 0 0 24px rgba(240,192,64,1); }
+    }
+
+    #board {
+      display: grid;
+      grid-template-columns: repeat(3, 110px);
+      grid-template-rows: repeat(3, 110px);
+      gap: 8px;
+    }
+
+    .cell {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.8rem;
+      font-weight: bold;
+      background: #16213e;
+      border: 2px solid #0f3460;
+      border-radius: 12px;
+      cursor: pointer;
+      user-select: none;
+      transition: background 0.2s, transform 0.1s, border-color 0.2s;
+    }
+
+    .cell:hover:not(.marked):not(.win-cell) {
+      background: #0f3460;
+      border-color: #a0d8ef;
+      transform: scale(1.04);
+    }
+
+    .cell.marked {
+      background: #0f3460;
+      border-color: #a0d8ef;
+      color: #a0d8ef;
+    }
+
+    .cell.win-cell {
+      background: #3a2a00;
+      border-color: #f0c040;
+      color: #f0c040;
+      animation: glow 0.6s infinite alternate;
+    }
+
+    @keyframes glow {
+      from { box-shadow: 0 0 8px rgba(240,192,64,0.4); }
+      to   { box-shadow: 0 0 20px rgba(240,192,64,0.9); }
+    }
+
+    #controls {
+      display: flex;
+      gap: 12px;
+    }
+
+    button {
+      padding: 10px 28px;
+      font-size: 1rem;
+      font-weight: bold;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: transform 0.1s, opacity 0.2s;
+    }
+
+    button:hover { transform: scale(1.05); }
+    button:active { transform: scale(0.97); }
+
+    #btn-new {
+      background: #f0c040;
+      color: #1a1a2e;
+    }
+
+    #btn-call {
+      background: #0f3460;
+      color: #a0d8ef;
+      border: 2px solid #a0d8ef;
+    }
+
+    #btn-call:disabled {
+      opacity: 0.4;
+      cursor: default;
+      transform: none;
+    }
+
+    #called-numbers {
+      font-size: 0.9rem;
+      color: #666;
+      max-width: 380px;
+      text-align: center;
+      min-height: 1.4em;
+    }
+
+    #last-call {
+      font-size: 1rem;
+      color: #ccc;
+      min-height: 1.4em;
+    }
+  </style>
+</head>
+<body>
+  <h1>BINGO</h1>
+  <div id="status">Click "Call Number" to start!</div>
+  <div id="board"></div>
+  <div id="last-call"></div>
+  <div id="controls">
+    <button id="btn-new">New Game</button>
+    <button id="btn-call">Call Number</button>
+  </div>
+  <div id="called-numbers"></div>
+
+  <script>
+    const TOTAL = 27; // numbers 1-27 for a 3x3 card
+    const WINS = [
+      [0,1,2],[3,4,5],[6,7,8],   // rows
+      [0,3,6],[1,4,7],[2,5,8],   // cols
+      [0,4,8],[2,4,6]            // diagonals
+    ];
+
+    let card = [];
+    let marked = new Set();
+    let called = [];
+    let pool = [];
+    let won = false;
+
+    function shuffle(arr) {
+      for (let i = arr.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [arr[i], arr[j]] = [arr[j], arr[i]];
+      }
+      return arr;
+    }
+
+    function newGame() {
+      const allNums = Array.from({length: TOTAL}, (_, i) => i + 1);
+      shuffle(allNums);
+      card = allNums.slice(0, 9);
+      marked = new Set();
+      called = [];
+      pool = shuffle(Array.from({length: TOTAL}, (_, i) => i + 1));
+      won = false;
+      document.getElementById('btn-call').disabled = false;
+      setStatus("Click \"Call Number\" to start!");
+      document.getElementById('last-call').textContent = '';
+      document.getElementById('called-numbers').textContent = '';
+      renderBoard();
+    }
+
+    function renderBoard() {
+      const board = document.getElementById('board');
+      board.innerHTML = '';
+      card.forEach((num, idx) => {
+        const cell = document.createElement('div');
+        cell.className = 'cell' + (marked.has(idx) ? ' marked' : '');
+        cell.textContent = num;
+        cell.addEventListener('click', () => toggleMark(idx, cell));
+        board.appendChild(cell);
+      });
+    }
+
+    function toggleMark(idx, cell) {
+      if (won) return;
+      if (marked.has(idx)) {
+        marked.delete(idx);
+        cell.classList.remove('marked');
+      } else {
+        marked.add(idx);
+        cell.classList.add('marked');
+      }
+      checkWin();
+    }
+
+    function checkWin() {
+      for (const line of WINS) {
+        if (line.every(i => marked.has(i))) {
+          won = true;
+          document.getElementById('btn-call').disabled = true;
+          setStatus('BINGO! You win! 🎉', true);
+          highlightWin(line);
+          return;
+        }
+      }
+    }
+
+    function highlightWin(line) {
+      const cells = document.querySelectorAll('.cell');
+      line.forEach(i => {
+        cells[i].classList.add('win-cell');
+      });
+    }
+
+    function callNumber() {
+      if (won || pool.length === 0) return;
+      const num = pool.pop();
+      called.push(num);
+
+      document.getElementById('last-call').textContent = `Called: ${num}`;
+      document.getElementById('called-numbers').textContent =
+        'Previous: ' + [...called].reverse().slice(1, 10).join(', ');
+
+      // Auto-mark if on card
+      const idx = card.indexOf(num);
+      if (idx !== -1 && !marked.has(idx)) {
+        marked.add(idx);
+        const cells = document.querySelectorAll('.cell');
+        cells[idx].classList.add('marked');
+        checkWin();
+      }
+
+      if (pool.length === 0 && !won) {
+        setStatus('All numbers called. No bingo this time.');
+        document.getElementById('btn-call').disabled = true;
+      } else if (!won) {
+        setStatus(`${pool.length} numbers remaining.`);
+      }
+    }
+
+    function setStatus(msg, isWin = false) {
+      const el = document.getElementById('status');
+      el.textContent = msg;
+      el.className = isWin ? 'win' : '';
+    }
+
+    document.getElementById('btn-new').addEventListener('click', newGame);
+    document.getElementById('btn-call').addEventListener('click', callNumber);
+
+    newGame();
+  </script>
+</body>
+</html>
